@@ -91,8 +91,8 @@ model SourceProduct {
   normalizedAt      DateTime @default(now())
   createdAt         DateTime @default(now())
 
-  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  drafts ProductDraft[]
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  drafts   ProductDraft[]
 
   @@index([tenantId, provider, createdAt(sort: Desc)])
   @@index([sourceProductId])
@@ -121,8 +121,8 @@ model ProductDraft {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  source SourceProduct? @relation(fields: [sourceProductId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sourceProduct SourceProduct? @relation(fields: [sourceProductId], references: [id])
 
   @@index([tenantId, status])
   @@index([sourceProductId])

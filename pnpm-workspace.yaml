@@ -1,0 +1,14 @@
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+# horsebuy · pnpm 配置
+# pnpm v10+ 从这里读 onlyBuiltDependencies (不再从 package.json 里的 pnpm field 读)
+
+# 允许这几个包跑 postinstall (供应链安全: 默认拒绝陌生包的 postinstall)
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - prisma
+  - esbuild
