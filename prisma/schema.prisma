@@ -1,0 +1,176 @@
+// horsebuy · Prisma schema
+// 参照 POUNDING v0.1 Section 6 的 4 类数据模型
+// v3: 0% → 55%, tenant + cost 字段前置 (对比报告差距 #1 #5 #7)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Tenant / 多商家隔离 · 对比报告差距 #7 前置
+// ============================================================
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  plan      String   @default("trial")  // trial | starter | pro
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  shops          Shop[]
+  sourceProducts SourceProduct[]
+  productDrafts  ProductDraft[]
+  listingTasks   ListingTask[]
+  toolCallLogs   ToolCallLog[]
+
+  @@map("tenants")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  email     String   @unique
+  name      String?
+  role      String   @default("operator")  // owner | operator | viewer
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Shop {
+  id         String   @id @default(uuid())
+  tenantId   String
+  platform   String   // shopee_vn | shopee_th | lazada_vn | ozon
+  shopId     String   // 平台侧 shop_id
+  name       String?
+  apiKey     String?  // 加密存 (W4 加加密)
+  apiSecret  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, shopId])
+  @@index([tenantId, platform])
+  @@map("shops")
+}
+
+// ============================================================
+// 4 类数据模型 · POUNDING v0.1 Section 6
+// ============================================================
+
+// 第三方 1688 API 返回的标准化候选商品 (搜索层)
+model SourceProduct {
+  id                String   @id @default(uuid())
+  tenantId          String
+  provider          String   // 'aliopen' | 'jushuitan' | 'yuewen' | 'stub'
+  sourceProductId   String   // 1688 offer_id
+  sourceUrl         String?
+  titleCn           String
+  shopName          String?
+  categorySource    String?
+  priceMinCny       Decimal? @db.Decimal(10, 2)
+  priceMaxCny       Decimal? @db.Decimal(10, 2)
+  salesCount        Int?
+  minOrderQuantity  Int?
+  mainImage         String?
+  imageUrls         Json?    // string[]
+  skuSummary        Json?    // {...}
+  rawScore          Decimal? @db.Decimal(4, 3)  // 跨境适配度 0-1
+  rawPayload        Json?    // 原始未标准化响应, 排错用
+  normalizedAt      DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  drafts ProductDraft[]
+
+  @@index([tenantId, provider, createdAt(sort: Desc)])
+  @@index([sourceProductId])
+  @@map("source_products")
+}
+
+// 上架前的标准化商品草稿
+model ProductDraft {
+  id               String   @id @default(uuid())
+  tenantId         String
+  sourceProductId  String?
+  source           String   @default("1688")
+  titleCn          String
+  titleVi          String?  // 越南语
+  titleTh          String?  // 泰语 Phase 2
+  categorySource   String?
+  categoryShopee   String?  // Shopee 类目 ID
+  attributes       Json?    // [{name, value}]
+  skus             Json?    // [{sku_id, size, color, stock, price}]
+  sourceImages     Json?    // string[]
+  generatedImages  Json?    // string[]
+  descriptionVi    String?  @db.Text
+  pricing          Json?    // {cost_cny, price_vnd, margin, ...}
+  inventory        Json?    // {initial_stock, low_stock_alert}
+  status           String   @default("draft")  // draft | ready | listing | published | failed
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source SourceProduct? @relation(fields: [sourceProductId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([sourceProductId])
+  @@map("product_drafts")
+}
+
+// 一次上架任务跟踪
+model ListingTask {
+  id               String    @id @default(uuid())
+  tenantId         String
+  agentId          String?   // 'horsebuy_shopee_vn'
+  conversationId   String?
+  userId           String?
+  shopId           String?   // Shop.shopId
+  productDraftIds  String[]  // ProductDraft.id[]
+  steps            Json?     // [{name, status, started_at, ...}]
+  costEstimateCny  Decimal?  @db.Decimal(10, 2)
+  costActualCny    Decimal?  @db.Decimal(10, 2)
+  status           String    @default("pending")  // pending | running | success | failed | paused
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  completedAt      DateTime?
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  toolCallLogs ToolCallLog[]
+
+  @@index([tenantId, status, createdAt(sort: Desc)])
+  @@map("listing_tasks")
+}
+
+// 工具调用日志 · 成本审计核心 · 对比报告差距 #1 #5 强调
+model ToolCallLog {
+  id              String   @id @default(uuid())
+  tenantId        String
+  taskId          String?
+  tool            String   // 'shopee.create_product' | 'llm.translate_vi' | 'image.generate'
+  requestSummary  Json?
+  responseSummary Json?
+  status          String   // success | failed | timeout
+  latencyMs       Int?
+  costCny         Decimal? @db.Decimal(10, 4)
+  errorMessage    String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  task   ListingTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, tool, createdAt(sort: Desc)])
+  @@index([taskId])
+  @@map("tool_call_logs")
+}

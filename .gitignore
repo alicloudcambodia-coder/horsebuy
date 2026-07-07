@@ -1,0 +1,41 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建
+dist/
+build/
+*.tsbuildinfo
+
+# 环境 (禁止进 git!)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# 日志
+*.log
+logs/
+
+# Prisma
+prisma/migrations/dev.db
+prisma/dev.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# 缓存
+.cache/
+.tmp/
+tmp/
