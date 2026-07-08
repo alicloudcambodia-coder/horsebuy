@@ -7,7 +7,7 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
-import { tenantPlugin } from './lib/tenant.js';
+import { registerTenant } from './lib/tenant.js';
 import { eventBus } from './lib/websocket.js';
 import { conversationsRoutes } from './routes/conversations.js';
 import { sourcingRoutes } from './routes/sourcing.js';
@@ -16,13 +16,15 @@ import { prisma } from './db.js';
 
 async function main() {
   const app = Fastify({
-    logger,
+    // Fastify 5 breaking change: `logger` 只接配置对象, 传 pino instance 用 `loggerInstance`
+    loggerInstance: logger,
     disableRequestLogging: env.NODE_ENV === 'production',
   });
 
   await app.register(cors, { origin: true, credentials: true });
   await app.register(websocket);
-  await app.register(tenantPlugin);
+  // Tenant 直接注册在 app 上, 不用 register (避免 plugin encapsulation, hook 才能在 routes 里生效)
+  registerTenant(app);
 
   // Health
   app.get('/healthz', async () => ({
